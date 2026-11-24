@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import math
 import time
-from datetime import datetime
 
 from rich.table import Table
 from rich.text import Text
@@ -14,8 +13,25 @@ from textual.containers import Horizontal, Vertical
 from textual.widgets import DataTable, Footer, RichLog, Sparkline, Static
 
 from config import Config
-from decoder import decode_log, short_address, short_hex, to_checksum_address
-from metrics import TREND_BLOCKS, WEI_PER_GWEI, Metrics, Stats
+from formatting import (
+    FEE_CHANGE_FLAT,
+    age_level,
+    chain_label,
+    clock_time,
+    fee_change,
+    feed_line,
+    feed_scope,
+    format_count,
+    format_gwei,
+    format_percent,
+    format_rate,
+    format_seconds,
+    logs_notice,
+    more_events_text,
+    trend_summary,
+    utilization_level,
+)
+from metrics import WEI_PER_GWEI, Metrics, Stats
 from ws_client import Block, ConnectionState, EthWsClient, LogEvent, LogsState
 
 REFRESH_INTERVAL = 0.25  # status bar tick; ingestion itself is never throttled
@@ -35,38 +51,6 @@ FEED_FULL_ADDRESS_MIN_WIDTH = 130  # narrower feeds show shortened contract addr
 WIDE_LAYOUT_MIN_WIDTH = 126  # below this the gas panel stacks above the blocks table
 BAR_WIDTH = 10
 SPARKLINE_FLAT_RANGE = 0.005  # relative min-max range below which the base fee chart is drawn flat
-
-CHAIN_NAMES = {
-    1: "Ethereum",
-    10: "OP Mainnet",
-    56: "BNB Smart Chain",
-    100: "Gnosis",
-    130: "Unichain",
-    137: "Polygon",
-    146: "Sonic",
-    324: "zkSync Era",
-    480: "World Chain",
-    1101: "Polygon zkEVM",
-    5000: "Mantle",
-    8453: "Base",
-    34443: "Mode",
-    42161: "Arbitrum One",
-    42170: "Arbitrum Nova",
-    43114: "Avalanche C-Chain",
-    59144: "Linea",
-    81457: "Blast",
-    534352: "Scroll",
-    7777777: "Zora",
-    # testnets and local development chains
-    17000: "Holesky",
-    560048: "Hoodi",
-    11155111: "Sepolia",
-    84532: "Base Sepolia",
-    421614: "Arbitrum Sepolia",
-    11155420: "OP Sepolia",
-    1337: "local dev chain",
-    31337: "Anvil / Hardhat",
-}
 
 # (label, key, width, right-aligned)
 BLOCK_COLUMNS = (
@@ -256,7 +240,7 @@ class GasMonitorApp(App[None]):
             if status.last_error:
                 left.append(f" · {status.last_error}", style="red")
         left.append("  │  ", style="dim")
-        left.append(_chain_label(status.chain_id))
+        left.append(chain_label(status.chain_id))
         left.append("  │  ", style="dim")
         left.append(status.endpoint, style="dim")
 
@@ -350,7 +334,7 @@ class GasMonitorApp(App[None]):
             events_cell = Text(f"{events:,}", justify="right")
         return (
             Text(str(block.number), style="bold cyan"),
-            Text(_clock_time(block.timestamp), style="dim"),
+            Text(clock_time(block.timestamp), style="dim"),
             Text(fee, justify="right"),
             _fee_delta(block, previous),
             utilization_bar(block.utilization),
@@ -367,7 +351,7 @@ class GasMonitorApp(App[None]):
         self._feed_seq = self.metrics.log_seq
         shown = self.metrics.recent_logs(min(new, FEED_LINES_PER_REFRESH))
         if new > len(shown):
-            feed.write(Text(f"{'':10}  ⋯ {new - len(shown):,} more events not shown", style="dim"))
+            feed.write(Text(more_events_text(new - len(shown)), style="dim"))
         compact = feed.scrollable_content_region.width < FEED_FULL_ADDRESS_MIN_WIDTH
         for log in shown:
             feed.write(_feed_line(log, compact=compact))
@@ -377,90 +361,23 @@ class GasMonitorApp(App[None]):
         if status.logs is self._logs_state_seen:
             return
         self._logs_state_seen = status.logs
-        if status.logs is LogsState.ACTIVE:
-            feed.write(Text(f"· subscribed to logs from {self._feed_scope()}", style="dim italic"))
-        elif status.logs is LogsState.UNAVAILABLE:
-            reason = status.logs_error or "unknown error"
-            feed.write(Text(f"· the node rejected the logs subscription: {reason}", style="yellow"))
-        elif status.logs is LogsState.OFF:
-            feed.write(Text("· logs subscription disabled", style="dim italic"))
+        notice = logs_notice(status, self._feed_scope())
+        if notice is not None:
+            text, level = notice
+            feed.write(Text(text, style=level or "dim italic"))
 
     def _feed_scope(self) -> str:
-        if not self.config.subscribe_logs:
-            return "logs off"
-        addresses = self.config.contract_addresses
-        if not addresses:
-            return "all contracts, sampled when busy"
-        if len(addresses) == 1:
-            return to_checksum_address(addresses[0])
-        return f"{len(addresses)} contracts"
+        return feed_scope(self.config)
 
 
-# --- formatting helpers -------------------------------------------------------------
-
-
-def format_gwei(value: float | None) -> str:
-    """format Gwei with ~4 significant digits, from L2 fees (0.001) to mainnet spikes (1000+)."""
-    if value is None:
-        return "—"
-    if value <= 0:
-        return "0"
-    if value >= 1000:
-        return f"{value:,.0f}"
-    if value >= 100:
-        return f"{value:.1f}"
-    if value >= 10:
-        return f"{value:.2f}"
-    if value >= 1:
-        return f"{value:.3f}"
-    decimals = min(9, 2 - math.floor(math.log10(value)))  # 1 wei = 1e-9 Gwei
-    return f"{value:.{decimals}f}"
-
-
-def format_seconds(seconds: float | None) -> str:
-    if seconds is None:
-        return "—"
-    if float(seconds).is_integer() and seconds < 120:
-        return f"{seconds:.0f}s"  # block timestamps have whole-second resolution
-    if seconds < 1:
-        return f"{max(seconds, 0):.2f}s"
-    if seconds < 10:
-        return f"{seconds:.1f}s"
-    if seconds < 120:
-        return f"{seconds:.0f}s"
-    minutes, secs = divmod(int(seconds), 60)
-    if minutes < 60:
-        return f"{minutes}m {secs:02d}s"
-    hours, minutes = divmod(minutes, 60)
-    return f"{hours}h {minutes:02d}m"
-
-
-def format_rate(per_second: float | None) -> str:
-    if per_second is None:
-        return "—"
-    if per_second >= 100:
-        return f"{per_second:,.0f}/s"
-    if per_second >= 1:
-        return f"{per_second:.1f}/s"
-    return f"{per_second * 60:.1f}/min"
-
-
-def format_count(value: float | None) -> str:
-    if value is None:
-        return "—"
-    return f"{value:.1f}" if value < 10 else f"{value:,.0f}"
-
-
-def format_percent(fraction: float | None) -> str:
-    return "—" if fraction is None else f"{fraction * 100:.1f}%"
+# --- rich rendering helpers --------------------------------------------------------
 
 
 def utilization_bar(fraction: float) -> Text:
     """gas used as a small bar; above 50% (the EIP-1559 target) the next base fee rises."""
     filled = round(min(max(fraction, 0.0), 1.0) * BAR_WIDTH)
-    style = "red" if fraction >= 0.9 else "yellow" if fraction > 0.5 else "green"
     return Text.assemble(
-        ("█" * filled, style),
+        ("█" * filled, utilization_level(fraction)),
         ("░" * (BAR_WIDTH - filled), "dim"),
         f" {fraction * 100:5.1f}%",
     )
@@ -475,62 +392,40 @@ def _sparkline_data(history: tuple[float, ...]) -> list[float]:
 
 def _fee_delta(block: Block, previous: Block | None) -> Text:
     """base fee change against the parent block."""
-    if previous is None or block.base_fee is None or not previous.base_fee:
+    change = None if previous is None else fee_change(block.base_fee, previous.base_fee)
+    if change is None:
         return Text("", justify="right")
-    change = (block.base_fee - previous.base_fee) / previous.base_fee
-    if abs(change) < 0.0005:
+    if abs(change) < FEE_CHANGE_FLAT:
         return Text("0.0%", style="dim", justify="right")
     return Text(f"{change * 100:+.1f}%", style="red" if change > 0 else "green", justify="right")
 
 
 def _trend_text(stats: Stats) -> Text:
-    if stats.trend_change is None:
+    trend = trend_summary(stats)
+    if trend is None:
         return Text("—", style="dim")
-    span = f"{stats.trend_change * 100:+.1f}% ({min(stats.blocks, TREND_BLOCKS)} blocks)"
-    if stats.trend == "rising":
-        return Text(f"▲ rising {span}", style="red")
-    if stats.trend == "falling":
-        return Text(f"▼ falling {span}", style="green")
-    return Text(f"◆ stable {span}", style="dim")
+    text, level = trend
+    return Text(text, style=level or "dim")
 
 
 def _feed_line(log: LogEvent, *, compact: bool) -> Text:
-    decoded = decode_log(log.topics, log.data)
+    parts = feed_line(log, compact=compact)
     line = Text(no_wrap=True, overflow="ellipsis")
-    block = "pending" if log.block_number is None else str(log.block_number)
-    line.append(f"{block:>10}", style="cyan")
+    line.append(parts.block, style="cyan")
     line.append("  ")
-    line.append(short_address(log.address) if compact else to_checksum_address(log.address))
+    line.append(parts.address)
     line.append("  ")
-    line.append(f"{short_hex(log.topics[0]) if log.topics else 'anonymous':<15}", style="dim")
+    line.append(parts.topic, style="dim")
     line.append("  ")
-    line.append(f"{decoded.name or 'unknown':<16}", style="bold magenta" if decoded.name else "dim")
-    for label, value in decoded.args:
+    line.append(parts.name, style="bold magenta" if parts.known else "dim")
+    for label, value in parts.args:
         line.append(f" {label}=", style="dim")
         line.append(value)
-    if log.removed:
+    if parts.removed:
         line.append("  removed by reorg", style="bold red")
     return line
 
 
-def _chain_label(chain_id: int | None) -> str:
-    if chain_id is None:
-        return "chain ?"
-    name = CHAIN_NAMES.get(chain_id)
-    return f"{name} · chain {chain_id}" if name else f"chain {chain_id}"
-
-
 def _age_style(age: float, block_time: float | None) -> str:
-    expected = max(block_time or 12.0, 1.0)
-    if age < expected * 2:
-        return "green"
-    if age < expected * 5:
-        return "yellow"
-    return "bold red"
-
-
-def _clock_time(timestamp: int) -> str:
-    try:
-        return datetime.fromtimestamp(timestamp).strftime("%H:%M:%S")
-    except (OverflowError, OSError, ValueError):
-        return "?"
+    level = age_level(age, block_time)
+    return "bold red" if level == "red" else level

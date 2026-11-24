@@ -35,6 +35,7 @@ class Config:
     window: int = DEFAULT_WINDOW
     stale_timeout: float = DEFAULT_STALE_TIMEOUT  # seconds without a new block before reconnecting
     log_file: Path | None = None
+    gui: bool = False  # desktop GUI instead of the terminal UI
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -67,6 +68,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--log-file", type=Path, metavar="PATH",
         help="write diagnostic logs to this file (env: LOG_FILE)",
+    )
+    parser.add_argument(
+        "--gui", action=argparse.BooleanOptionalAction, default=None,
+        help="open the desktop GUI instead of the terminal UI (env: GUI, default: off)",
     )
     parser.add_argument(
         "--env-file", type=Path, metavar="PATH",
@@ -103,6 +108,7 @@ def load_config(argv: Sequence[str] | None = None) -> Config:
         window=window,
         stale_timeout=stale_timeout,
         log_file=log_file,
+        gui=args.gui if args.gui is not None else _env_bool("GUI", False),
     )
 
 

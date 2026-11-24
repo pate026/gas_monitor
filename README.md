@@ -2,8 +2,9 @@
 
 A real-time Ethereum block, gas price and event monitor for the terminal. It streams
 `newHeads` and `logs` over a raw JSON-RPC WebSocket (no polling) and shows them in a
-[Textual](https://textual.textualize.io/) UI. It works with any EVM chain whose node
-supports `eth_subscribe`, such as Ethereum mainnet, Base or Arbitrum.
+[Textual](https://textual.textualize.io/) UI, or in a desktop window with `--gui` (see
+[Desktop GUI](#desktop-gui)). It works with any EVM chain whose node supports
+`eth_subscribe`, such as Ethereum mainnet, Base or Arbitrum.
 
 ```
  ● connected  │  Ethereum · chain 1  │  wss://ethereum-rpc.publicnode.com                                        block #26463021  0.49s ago
@@ -59,6 +60,7 @@ python main.py --no-logs -w 100                   # blocks only, 100-block windo
 | `SUBSCRIBE_LOGS` | `--logs` / `--no-logs` | `true` | Subscribe to logs at all |
 | `STALE_TIMEOUT` | `--stale-timeout` | `60` | Reconnect after this many seconds without a block (`0` disables) |
 | `LOG_FILE` | `--log-file` | none | Write connection diagnostics to a file |
+| `GUI` | `--gui` / `--no-gui` | `false` | Open the desktop GUI instead of the terminal UI |
 | | `--env-file` | `./.env` | Read variables from another file |
 
 Precedence is CLI flag, then environment variable, then `.env`. Mixed-case contract
@@ -74,6 +76,41 @@ addresses are validated against their EIP-55 checksum to catch typos.
 
 Scroll the blocks table to inspect older rows; it stops updating while scrolled and
 resumes when you scroll back to the top.
+
+## Desktop GUI
+
+![gas monitor desktop GUI](docs/gui.png)
+
+```bash
+python main.py --gui                                   # same flags and .env as the TUI
+python main.py --gui -u wss://base-rpc.publicnode.com
+```
+
+The GUI shows the same panels and colors as the terminal UI, built with
+[PySide6](https://doc.qt.io/qtforpython-6/) (Qt), [pyqtgraph](https://www.pyqtgraph.org/)
+for the base fee chart and [qasync](https://github.com/CabbageDevelopment/qasync), which
+runs the WebSocket client inside the Qt event loop on a single thread. Its packages are
+in `requirements.txt` and take about 250 MB; the terminal UI does not need them, so to
+skip them install only `websockets`, `textual` and `python-dotenv`.
+
+- **Keys:** `P` pause / resume, `C` clear the event feed, `Q` or `Ctrl+Q` quit; the same
+  actions are on the toolbar at the bottom. While paused the window frame turns yellow.
+- **Blocks table:** new blocks are added at the top without moving the rows you are
+  reading, so you can scroll down and keep reading while it updates.
+- **Event feed:** follows the newest events while it is scrolled to the bottom, and stays
+  put when you scroll up. It keeps the last 250 lines.
+- **Layout:** drag the splitters between the panels. The window size and splitter
+  positions are restored on the next start (on Linux from `~/.config/gas_monitor/gui.conf`).
+- **Wayland:** if the window does not open, try `QT_QPA_PLATFORM=xcb python main.py --gui`.
+
+## Tests
+
+```bash
+python -m unittest
+```
+
+The tests cover the shared formatting helpers and the GUI blocks table model. The model
+tests are skipped when PySide6 is not installed.
 
 ## How it works
 
@@ -119,4 +156,7 @@ the logs subscription did not cover that block (for example, backfilled history)
 | `ws_client.py` | Async JSON-RPC WebSocket client, subscriptions, reconnection |
 | `metrics.py` | Rolling window and derived statistics |
 | `decoder.py` | Keccak-256, EIP-55 addresses, event signature table and log decoding |
+| `formatting.py` | Display formatting shared by both UIs (numbers, colors, feed lines) |
 | `tui.py` | Textual app: status bar, gas panel, blocks table, event feed |
+| `gui/` | PySide6 desktop GUI: `app.py` (qasync loop), `main_window.py`, one module per panel, `theme.py` |
+| `tests/` | Unit tests (`python -m unittest`) |

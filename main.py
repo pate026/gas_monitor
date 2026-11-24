@@ -1,4 +1,4 @@
-"""entry point: load the configuration, wire the components together and start the TUI."""
+"""entry point: load the configuration, wire the components together and start the TUI or GUI."""
 
 from __future__ import annotations
 
@@ -7,10 +7,11 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
-from config import ConfigError, load_config
+from config import Config, ConfigError, load_config
 from metrics import Metrics
-from tui import GasMonitorApp
 from ws_client import EthWsClient
+
+GUI_PACKAGES = {"PySide6", "shiboken6", "pyqtgraph", "qasync", "numpy"}
 
 
 def _setup_logging(log_file: Path | None) -> None:
@@ -24,6 +25,23 @@ def _setup_logging(log_file: Path | None) -> None:
     handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)-7s %(name)s: %(message)s"))
     root.addHandler(handler)
     root.setLevel(logging.INFO)
+
+
+def _run_ui(config: Config, metrics: Metrics, client: EthWsClient) -> int:
+    # imported lazily so the GUI does not need Textual and the TUI does not need PySide6
+    if config.gui:
+        try:
+            from gui.app import run_gui
+        except ModuleNotFoundError as exc:
+            if (exc.name or "").partition(".")[0] not in GUI_PACKAGES:
+                raise
+            print(f"error: the GUI needs {exc.name}: pip install -r requirements.txt", file=sys.stderr)
+            return 2
+        return run_gui(config, metrics, client)
+    from tui import GasMonitorApp
+
+    GasMonitorApp(config, metrics, client).run()
+    return 0
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -47,8 +65,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         backfill_blocks=config.window,
         stale_timeout=config.stale_timeout,
     )
-    GasMonitorApp(config, metrics, client).run()
-    return 0
+    return _run_ui(config, metrics, client)
 
 
 if __name__ == "__main__":
