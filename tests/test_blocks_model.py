@@ -13,8 +13,8 @@ try:
 
     from gui.blocks_model import COLUMN_KEYS, NOT_COVERED, PENDING, BlocksModel, row_diff
     from gui.theme import apply_dark_theme, level_color
-except ModuleNotFoundError as exc:  # the TUI alone does not need PySide6
-    raise unittest.SkipTest(f"GUI dependencies missing: {exc.name}") from None
+except ImportError as exc:  # missing package or Qt system library
+    raise unittest.SkipTest(f"GUI dependencies missing: {exc.name or exc}") from None
 
 from metrics import Metrics
 from ws_client import Block, LogEvent

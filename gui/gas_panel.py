@@ -38,6 +38,8 @@ VALUE_POINT_SIZE_DELTA = 3  # card values are this much larger than the base fon
 # keep at least this relative y range so near-constant fees (e.g. L2 floors) are not
 # blown up into noise; the TUI flattens its sparkline for the same reason
 CHART_MIN_RELATIVE_RANGE = 0.02
+# x range used while only one block is known, so the range never has zero width
+CHART_MIN_X_RANGE = 1
 CHART_LINE_WIDTH = 2
 CHART_MIN_HEIGHT = 140
 
@@ -106,7 +108,7 @@ class BaseFeeChart(pg.PlotWidget):
         low, high = min(fees), max(fees)
         pad = max((high - low) * 0.1, high * CHART_MIN_RELATIVE_RANGE / 2)
         self.setYRange(max(low - pad, 0.0), high + pad, padding=0)
-        self.setXRange(0, max(xs), padding=0.02)
+        self.setXRange(0, max(max(xs), CHART_MIN_X_RANGE), padding=0.02)
 
 
 class GasPanel(QGroupBox):

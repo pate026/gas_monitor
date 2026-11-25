@@ -47,9 +47,13 @@ class BlocksPanel(QGroupBox):
     def render(self) -> None:
         """sync the table with the metrics window, without moving the rows being read."""
         bar = self._table.verticalScrollBar()
-        position = bar.value()
+        position = bar.value()  # scrolling per item: the first visible row
+        anchor = self._model.number_at(position) if position > 0 else None
         added_top = self._model.refresh()
-        # at the top the newest block stays in view; scrolled down, shift by the rows added
-        # above so the rows on screen stay where they are
-        if position > 0 and added_top:
+        # at the top the newest block stays in view; scrolled down, keep the block that was
+        # at the top of the screen there, also after a model reset (a filled gap)
+        row = self._model.row_of(anchor) if anchor is not None else None
+        if row is not None:
+            bar.setValue(row)
+        elif position > 0 and added_top:
             bar.setValue(position + added_top)

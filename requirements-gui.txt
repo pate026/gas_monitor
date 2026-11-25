@@ -1,0 +1,6 @@
+-r requirements.txt
+# desktop GUI (python main.py --gui); Essentials is the core Qt subset, enough for widgets.
+# tested together on Python 3.15 (gui/app.py patches a qasync 0.28 / 3.15 incompatibility)
+PySide6-Essentials==6.12.0
+pyqtgraph==0.14.0
+qasync==0.28.0

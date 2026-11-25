@@ -43,6 +43,9 @@ cp .env.example .env   # then set WS_RPC_URL (the default is a free public endpo
 python main.py
 ```
 
+For the desktop GUI, install `requirements-gui.txt` instead (it includes
+`requirements.txt`), see [Desktop GUI](#desktop-gui).
+
 ## Usage
 
 ```bash
@@ -89,9 +92,12 @@ python main.py --gui -u wss://base-rpc.publicnode.com
 The GUI shows the same panels and colors as the terminal UI, built with
 [PySide6](https://doc.qt.io/qtforpython-6/) (Qt), [pyqtgraph](https://www.pyqtgraph.org/)
 for the base fee chart and [qasync](https://github.com/CabbageDevelopment/qasync), which
-runs the WebSocket client inside the Qt event loop on a single thread. Its packages are
-in `requirements.txt` and take about 250 MB; the terminal UI does not need them, so to
-skip them install only `websockets`, `textual` and `python-dotenv`.
+runs the WebSocket client inside the Qt event loop on a single thread. Its packages take
+about 250 MB and the terminal UI does not need them, so they are in a separate file:
+
+```bash
+pip install -r requirements-gui.txt   # TUI requirements + PySide6, pyqtgraph, qasync
+```
 
 - **Keys:** `P` pause / resume, `C` clear the event feed, `Q` or `Ctrl+Q` quit; the same
   actions are on the toolbar at the bottom. While paused the window frame turns yellow.
@@ -109,8 +115,9 @@ skip them install only `websockets`, `textual` and `python-dotenv`.
 python -m unittest
 ```
 
-The tests cover the shared formatting helpers and the GUI blocks table model. The model
-tests are skipped when PySide6 is not installed.
+The tests cover the shared formatting helpers, the GUI blocks table (model and scroll
+position) and the base fee chart. The GUI tests are skipped when the GUI packages are not
+installed.
 
 ## How it works
 
@@ -160,3 +167,5 @@ the logs subscription did not cover that block (for example, backfilled history)
 | `tui.py` | Textual app: status bar, gas panel, blocks table, event feed |
 | `gui/` | PySide6 desktop GUI: `app.py` (qasync loop), `main_window.py`, one module per panel, `theme.py` |
 | `tests/` | Unit tests (`python -m unittest`) |
+| `requirements.txt` | Terminal UI dependencies |
+| `requirements-gui.txt` | Desktop GUI dependencies (includes `requirements.txt`) |

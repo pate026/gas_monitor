@@ -27,15 +27,37 @@ def _setup_logging(log_file: Path | None) -> None:
     root.setLevel(logging.INFO)
 
 
+def _from_gui_package(exc: ImportError) -> bool:
+    """tell whether an import error comes from one of the GUI packages."""
+    if (exc.name or "").partition(".")[0] in GUI_PACKAGES:
+        return True
+    # a native extension that fails to load (e.g. a missing libEGL.so.1) only sets
+    # the short module name, so look at the path of the extension file instead
+    if exc.path is not None and not GUI_PACKAGES.isdisjoint(Path(exc.path).parts):
+        return True
+    # some packages raise a bare ImportError themselves (qasync: "No Qt implementations
+    # found"), so look at the innermost frame outside the import machinery
+    filename = ""
+    tb = exc.__traceback__
+    while tb is not None:
+        if not tb.tb_frame.f_code.co_filename.startswith("<frozen"):
+            filename = tb.tb_frame.f_code.co_filename
+        tb = tb.tb_next
+    return not GUI_PACKAGES.isdisjoint(Path(filename).parts)
+
+
 def _run_ui(config: Config, metrics: Metrics, client: EthWsClient) -> int:
     # imported lazily so the GUI does not need Textual and the TUI does not need PySide6
     if config.gui:
         try:
             from gui.app import run_gui
-        except ModuleNotFoundError as exc:
-            if (exc.name or "").partition(".")[0] not in GUI_PACKAGES:
+        except ImportError as exc:
+            if not _from_gui_package(exc):
                 raise
-            print(f"error: the GUI needs {exc.name}: pip install -r requirements.txt", file=sys.stderr)
+            if isinstance(exc, ModuleNotFoundError):
+                print(f"error: the GUI needs {exc.name}: pip install -r requirements-gui.txt", file=sys.stderr)
+            else:
+                print(f"error: the GUI could not load Qt: {exc}", file=sys.stderr)
             return 2
         return run_gui(config, metrics, client)
     from tui import GasMonitorApp

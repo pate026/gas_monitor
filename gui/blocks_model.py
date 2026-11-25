@@ -128,6 +128,14 @@ class BlocksModel(QAbstractTableModel):
             self.dataChanged.emit(self.index(0, 0), self.index(len(new) - 1, len(COLUMNS) - 1))
         return added_top
 
+    def number_at(self, row: int) -> int | None:
+        """block number shown in a row, or None outside the table."""
+        return self._rows[row].number if 0 <= row < len(self._rows) else None
+
+    def row_of(self, number: int) -> int | None:
+        """row that shows a block number, or None when it is not in the table."""
+        return next((row for row, block in enumerate(self._rows) if block.number == number), None)
+
     def _set_rows(self, rows: list[Block]) -> None:
         self._rows = rows
         self._by_number = {block.number: block for block in rows}
